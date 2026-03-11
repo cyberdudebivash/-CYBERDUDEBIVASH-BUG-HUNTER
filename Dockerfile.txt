@@ -1,0 +1,23 @@
+# Stage 1: Build dependencies
+FROM python:3.12-slim AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Stage 2: Final Runtime
+FROM python:3.12-slim
+WORKDIR /app
+
+# Create a non-root user for security
+RUN groupadd -r cyberdude && useradd -r -g cyberdude bivash
+USER bivash
+
+# Copy dependencies and app code
+COPY --from=builder /home/bivash/.local /home/bivash/.local
+COPY . .
+
+ENV PATH=/home/bivash/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

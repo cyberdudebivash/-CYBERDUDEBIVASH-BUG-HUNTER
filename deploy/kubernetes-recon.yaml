@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdb-recon-workers
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: cdb-recon
+  template:
+    metadata:
+      labels:
+        app: cdb-recon
+    spec:
+      containers:
+      - name: worker
+        image: cyberdudebivash/recon
+        env:
+        - name: NODE_ID
+          value: "worker-node"

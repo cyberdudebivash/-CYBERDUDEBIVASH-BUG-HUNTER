@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+
+  recon-master:
+    build: .
+    container_name: cdb-recon-master
+    command: python automation/target_scheduler.py
+
+  recon-worker:
+    build: .
+    container_name: cdb-recon-worker
+    environment:
+      NODE_ID: worker-1
+    command: python workers/worker_node.py
