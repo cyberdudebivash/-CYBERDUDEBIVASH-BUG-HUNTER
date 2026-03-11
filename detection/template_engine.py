@@ -1,32 +1,33 @@
-import re
+import aiohttp
 
 
 class TemplateEngine:
 
-    def __init__(self):
-
-        self.templates = []
-
-    def load_templates(self, templates):
-
+    def __init__(self, templates):
         self.templates = templates
 
-    async def scan(self, urls):
+    async def scan(self, url):
 
         findings = []
 
-        for url in urls:
+        async with aiohttp.ClientSession() as session:
 
-            for template in self.templates:
+            for tpl in self.templates:
 
-                pattern = template.get("pattern")
+                target = url + tpl["path"]
 
-                if re.search(pattern, url):
+                try:
+                    async with session.get(target, timeout=10) as r:
+                        text = await r.text()
 
-                    findings.append({
-                        "url": url,
-                        "issue": template.get("name"),
-                        "severity": template.get("severity"),
-                    })
+                        if tpl["match"] in text:
+                            findings.append({
+                                "url": target,
+                                "template": tpl["id"],
+                                "severity": tpl["severity"]
+                            })
+
+                except:
+                    pass
 
         return findings

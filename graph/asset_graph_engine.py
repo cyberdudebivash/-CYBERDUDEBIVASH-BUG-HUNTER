@@ -1,33 +1,21 @@
-from collections import defaultdict
+import networkx as nx
 
 
 class AssetGraphEngine:
 
     def __init__(self):
+        self.graph = nx.Graph()
 
-        self.graph = defaultdict(set)
+    def add_domain(self, domain):
+        self.graph.add_node(domain, type="domain")
 
-    async def ingest_results(self, domain, results):
+    def add_subdomain(self, sub, domain):
+        self.graph.add_node(sub, type="subdomain")
+        self.graph.add_edge(domain, sub)
 
-        subs = results.get("subdomains", [])
-        urls = results.get("urls", [])
-        endpoints = results.get("endpoints", [])
+    def add_ip(self, sub, ip):
+        self.graph.add_node(ip, type="ip")
+        self.graph.add_edge(sub, ip)
 
-        for sub in subs:
-            self.graph[domain].add(sub)
-
-        for url in urls:
-            self.graph["urls"].add(url)
-
-        for ep in endpoints:
-            self.graph["endpoints"].add(ep)
-
-    def get_assets(self, node):
-
-        return list(self.graph.get(node, []))
-
-    def stats(self):
-
-        return {
-            "domains": len(self.graph)
-        }
+    def visualize(self):
+        return self.graph
