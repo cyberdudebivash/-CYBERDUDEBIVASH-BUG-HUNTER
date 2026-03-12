@@ -1,7 +1,7 @@
 """
-CYBERDUDEBIVASH BUG HUNTER - Sentinel APEX Uplink Client
+SENTINEL APEX CLIENT - Unified Intelligence & Reasoning Interface
 Path: intel/sentinel_apex_client.py
-Purpose: Feeds Bug Hunter findings into the main Sentinel APEX Threat Intel platform.
+Version: 3.0.0 (God-Mode Synchronized)
 """
 
 import aiohttp
@@ -11,84 +11,62 @@ import hashlib
 import hmac
 from datetime import datetime
 from typing import Dict, Any, Optional
+from config import settings
 
-# Global settings (Should be mirrored in config.py)
-APEX_API_URL = "https://api.sentinel-apex.com/v1/ingest"
-APEX_API_KEY = "YOUR_SENTINEL_APEX_MASTER_KEY"
-APEX_SECRET_SIGNING_KEY = "YOUR_HMAC_SIGNING_SECRET"
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [APEX-UPLINK] - %(message)s')
 logger = logging.getLogger(__name__)
 
-class SentinelApexClient:
-    def __init__(self):
-        self.api_url = APEX_API_URL
-        self.api_key = APEX_API_KEY
-        self.signing_key = APEX_SECRET_SIGNING_KEY
+class SentinelAIClient:
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or settings.SENTINEL_APEX_KEY
+        self.signing_key = settings.APEX_SECRET_SIGNING_KEY
+        self.base_url = settings.SENTINEL_APEX_URL
 
     def _generate_signature(self, payload: str) -> str:
-        """Generates an HMAC signature to prove the Bug Hunter's identity."""
+        """Generates an HMAC signature to prove identity to the APEX core."""
         return hmac.new(
             self.signing_key.encode(),
             payload.encode(),
             hashlib.sha256
         ).hexdigest()
 
-    async def send_finding(self, finding: Dict[str, Any]) -> bool:
-        """
-        Logic: Packages the finding into Sentinel APEX JSON format and uploads.
-        Includes automatic retry logic for network stability.
-        """
-        # Format for Sentinel APEX Schema
+    async def get_reasoning(self, prompt: str) -> Dict[str, Any]:
+        """Connects to the Sentinel APEX LLM Engine for God-Mode strategy."""
+        endpoint = f"{self.base_url}/ai/reasoning"
+        payload = {"prompt": prompt, "model": "cyberdude-brain-v2-ultra"}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(endpoint, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return {"priority": 0, "summary": "Offline", "next_steps": []}
+            except Exception as e:
+                logger.error(f"[AI-REASONING] Connection to Sentinel APEX Brain failed: {e}")
+                return {"priority": 0, "summary": "Error", "next_steps": []}
+
+    async def push_vulnerability(self, finding: Dict[str, Any]) -> bool:
+        """Synchronizes a critical finding to the Sentinel APEX Global Threat Feed."""
+        endpoint = f"{self.base_url}/intel/ingest"
         telemetry = {
-            "source": "CDB_BUG_HUNTER_NODE_01",
-            "event_type": finding.get("type", "UNKNOWN_VULN"),
-            "severity_score": 9.8 if finding.get("severity") == "CRITICAL" else 7.0,
-            "target_domain": finding.get("domain"),
-            "data": finding,
-            "timestamp": datetime.utcnow().isoformat()
+            "source": "CDB_BUG_HUNTER_SWARM",
+            "type": finding.get("type"),
+            "severity": finding.get("severity", "CRITICAL"),
+            "target": finding.get("domain"),
+            "evidence": finding.get("url") or finding.get("bucket"),
+            "metadata": finding,
+            "detected_at": datetime.utcnow().isoformat()
         }
-
         payload_str = json.dumps(telemetry)
-        signature = self._generate_signature(payload_str)
-
         headers = {
             "Content-Type": "application/json",
             "X-Sentinel-Key": self.api_key,
-            "X-Sentinel-Signature": signature
+            "X-Sentinel-Signature": self._generate_signature(payload_str)
         }
-
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(self.api_url, data=payload_str, headers=headers, timeout=10) as resp:
-                    if resp.status == 201:
-                        logger.info(f"Successfully synced finding to Sentinel APEX: {finding.get('domain')}")
-                        return True
-                    else:
-                        error_text = await resp.text()
-                        logger.error(f"APEX Uplink Rejected ({resp.status}): {error_text}")
-                        return False
+                async with session.post(endpoint, data=payload_str, headers=headers) as resp:
+                    return resp.status in [200, 201]
             except Exception as e:
-                logger.error(f"Uplink Connection Failed: {e}")
+                logger.error(f"[INTEL-SYNC] Connection error: {e}")
                 return False
-
-    async def batch_sync(self, scan_results: Dict[str, Any]):
-        """Syncs an entire scan batch to the Threat Intel platform."""
-        findings = scan_results.get("critical_findings", [])
-        if not findings:
-            return
-
-        logger.info(f"Syncing {len(findings)} findings to Sentinel APEX Central...")
-        tasks = [self.send_finding(f) for f in findings]
-        await asyncio.gather(*tasks)
-
-if __name__ == "__main__":
-    # Internal Uplink Test
-    client = SentinelApexClient()
-    test_finding = {
-        "type": "BOLA_VULNERABILITY",
-        "domain": "target.com",
-        "severity": "CRITICAL",
-        "url": "https://api.target.com/v1/user/99"
-    }
-    asyncio.run(client.send_finding(test_finding))

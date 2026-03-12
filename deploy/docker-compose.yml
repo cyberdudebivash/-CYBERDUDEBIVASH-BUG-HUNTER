@@ -1,77 +1,73 @@
 version: '3.8'
 
 services:
-  # --- THE ENGINE (FastAPI Gateway) ---
-  api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    container_name: cdb_bug_hunter_api
+  # --- 1. The Global Intelligence Broker ---
+  redis:
+    image: redis:7-alpine
+    container_name: cdb_redis_broker
     ports:
-      - "8000:8000"
-    env_file: ../.env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - "6379:6379"
     networks:
       - cdb_network
-
-  # --- THE SWARM (Distributed Workers) ---
-  worker:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    command: celery -A scheduler.scheduler_engine worker --loglevel=info --concurrency=10
-    env_file: ../.env
-    depends_on:
-      - redis
-      - db
-    networks:
-      - cdb_network
-
-  # --- THE ALERTER (WebSocket & Notification Engine) ---
-  alerts:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    command: uvicorn alerts.recon_alert_engine:app --host 0.0.0.0 --port 8001
-    ports:
-      - "8001:8001"
-    env_file: ../.env
-    depends_on:
-      - redis
-    networks:
-      - cdb_network
-
-  # --- THE INFRASTRUCTURE ---
-  db:
-    image: postgres:16-alpine
-    container_name: cdb_postgres
-    environment:
-      POSTGRES_USER: ${DB_USER:-bivash}
-      POSTGRES_PASSWORD: ${DB_PASS:-CyberPass2026}
-      POSTGRES_DB: bug_hunter_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bivash -d bug_hunter_db"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # --- 2. The God-Mode Command Center (Main API/CLI) ---
+  command_center:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cdb_command_center
+    volumes:
+      - ../outputs:/app/outputs
+      - ../bughunter_assets.db:/app/bughunter_assets.db
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GOD_MODE_ENABLED=true
+      - SENTINEL_APEX_KEY=${SENTINEL_APEX_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - cdb_network
+    command: python main.py --list targets.txt --god-mode
 
-  redis:
-    image: redis:7-alpine
-    container_name: cdb_redis
+  # --- 3. The Autonomous Worker Swarm ---
+  worker_swarm:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cdb_worker_node
+    volumes:
+      - ../outputs:/app/outputs
+      - ../bughunter_assets.db:/app/bughunter_assets.db
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - cdb_network
+    # Use 'solo' pool for stability in containerized environments
+    command: celery -A scheduler.scheduler_engine worker --loglevel=info --pool=solo
+
+  # --- 4. Real-Time Swarm Monitor (Flower) ---
+  monitor:
+    image: mher/flower
+    container_name: cdb_swarm_monitor
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
     networks:
       - cdb_network
 
 networks:
   cdb_network:
     driver: bridge
-
-volumes:
-  postgres_data:
