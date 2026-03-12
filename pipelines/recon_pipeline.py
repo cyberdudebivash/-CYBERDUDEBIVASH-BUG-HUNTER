@@ -1,322 +1,137 @@
 """
-CYBERDUDEBIVASH BUG HUNTER
-Enterprise Recon Pipeline Orchestrator
+CYBERDUDEBIVASH BUG HUNTER - Enterprise Recon Pipeline (Sentinel APEX Integrated)
+Path: pipelines/recon_pipeline.py
+Version: 6.0.0 (Production Hardened)
 
-Coordinates all reconnaissance engines to perform a full attack surface
-mapping workflow.
-
-Author:
-CYBERDUDEBIVASH OFFICIAL AUTHORITY
-Founder & CEO, CyberDudeBivash Pvt. Ltd.
+Features:
+- Python 3.11+ Compatibility (redis.asyncio)
+- Real-Time Sentinel APEX Intelligence Uplink
+- Autonomous BOLA & Cloud Hunter Agents
 """
 
 import asyncio
-from typing import Set, Dict
+import logging
+import json
+import redis.asyncio as redis  # Modern replacement for aioredis
+from datetime import datetime
+from typing import List, Dict, Set, Any
 
-from engines.recon.swarm_recon_engine import SwarmReconEngine
-from engines.recon.http_probe_engine import HTTPProbeEngine
-from engines.recon.port_scanner import PortScanner
-from engines.recon.tech_fingerprinter import TechFingerprinter
-from engines.recon.javascript_endpoint_extractor import JavascriptEndpointExtractor
-from engines.recon.takeover_detector import TakeoverDetector
-from engines.recon.subdomain_intelligence_engine import SubdomainIntelligenceEngine
+# --- Core Component Imports ---
+from subdomain_intelligence_engine import SubdomainIntelligenceEngine
+from http_probe_engine import probe_hosts
+from tech_fingerprinter import fingerprint_host
+from javascript_endpoint_extractor import extract_js_endpoints
+from database import save_asset, save_scan
 
-from engines.discovery.subdomain_permutator import SubdomainPermutator
-from engines.discovery.web_crawler import WebCrawler
+# --- Enterprise Intelligence Agents ---
+from agents.bola_intelligence_agent import BOLAAgent
+from multi_cloud_bucket_hunter import MultiCloudBucketHunter
+from intel.apex_uplink import ApexUplink  # The Sentinel APEX Bridge
 
-from database.database import Database
-
+# Configure elite-level logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [CDB-PIPELINE] - %(message)s')
+logger = logging.getLogger(__name__)
 
 class ReconPipeline:
-
-    def __init__(self, target: str):
-
-        self.target = target
-
-        # -------------------------------
-        # Recon Engines
-        # -------------------------------
-
-        self.swarm_engine = SwarmReconEngine()
-        self.subdomain_intel = SubdomainIntelligenceEngine()
-        self.permutator = SubdomainPermutator()
-
-        self.http_probe = HTTPProbeEngine()
-        self.port_scanner = PortScanner()
-        self.tech_fingerprinter = TechFingerprinter()
-
-        self.crawler = WebCrawler()
-        self.js_extractor = JavascriptEndpointExtractor()
-        self.takeover_detector = TakeoverDetector()
-
-        # -------------------------------
-        # Storage Layer
-        # -------------------------------
-
-        self.db = Database()
-
-        # -------------------------------
-        # Asset Collections
-        # -------------------------------
-
-        self.subdomains: Set[str] = set()
-        self.live_hosts: Set[str] = set()
-
-        self.urls: Set[str] = set()
-        self.js_files: Set[str] = set()
-
-        self.endpoints: Set[str] = set()
-        self.parameters: Set[str] = set()
-        self.forms = []
-
-    # -------------------------------------------------------
-    # STEP 1 — Subdomain Discovery
-    # -------------------------------------------------------
-
-    async def discover_subdomains(self):
-
-        print(f"[PIPELINE] Starting swarm recon for {self.target}")
-
-        discovered = await self.swarm_engine.enumerate(self.target)
-
-        self.subdomains.update(discovered)
-
-        print(f"[PIPELINE] Subdomains discovered: {len(self.subdomains)}")
-
-    # -------------------------------------------------------
-    # STEP 2 — Subdomain Intelligence
-    # -------------------------------------------------------
-
-    async def enrich_subdomains(self):
-
-        print("[PIPELINE] Running subdomain intelligence")
-
-        enriched = await self.subdomain_intel.enrich(list(self.subdomains))
-
-        self.subdomains.update(enriched)
-
-        print(f"[PIPELINE] Subdomains after enrichment: {len(self.subdomains)}")
-
-    # -------------------------------------------------------
-    # STEP 3 — Subdomain Permutation Engine
-    # -------------------------------------------------------
-
-    async def run_permutation_engine(self):
-
-        print("[PIPELINE] Running permutation engine")
-
-        before = len(self.subdomains)
-
-        new_subdomains = await self.permutator.generate_permutations(
-            list(self.subdomains)
-        )
-
-        self.subdomains.update(new_subdomains)
-
-        after = len(self.subdomains)
-
-        print(f"[PIPELINE] Permutation discovered {after - before} new assets")
-
-    # -------------------------------------------------------
-    # STEP 4 — HTTP Probing
-    # -------------------------------------------------------
-
-    async def probe_live_hosts(self):
-
-        print("[PIPELINE] Probing HTTP services")
-
-        results = await self.http_probe.probe(list(self.subdomains))
-
-        for item in results:
-
-            host = item.get("host")
-            url = item.get("url")
-
-            if host:
-                self.live_hosts.add(host)
-
-            if url:
-                self.urls.add(url)
-
-        print(f"[PIPELINE] Live hosts discovered: {len(self.live_hosts)}")
-
-    # -------------------------------------------------------
-    # STEP 5 — Port Scanning
-    # -------------------------------------------------------
-
-    async def scan_ports(self):
-
-        print("[PIPELINE] Running port scanner")
-
-        results = await self.port_scanner.scan(list(self.live_hosts))
-
-        for r in results:
-            await self.db.save_port_scan(r)
-
-        print("[PIPELINE] Port scanning completed")
-
-    # -------------------------------------------------------
-    # STEP 6 — Technology Fingerprinting
-    # -------------------------------------------------------
-
-    async def fingerprint_technologies(self):
-
-        print("[PIPELINE] Running tech fingerprinting")
-
-        results = await self.tech_fingerprinter.fingerprint(
-            list(self.live_hosts)
-        )
-
-        for r in results:
-            await self.db.save_technology(r)
-
-        print("[PIPELINE] Technology detection completed")
-
-    # -------------------------------------------------------
-    # STEP 7 — Web Crawling
-    # -------------------------------------------------------
-
-    async def run_crawler(self):
-
-        print("[PIPELINE] Starting web crawler")
-
-        results = await self.crawler.run(list(self.live_hosts))
-
-        self.urls.update(results["urls"])
-        self.js_files.update(results["js_files"])
-        self.endpoints.update(results["endpoints"])
-        self.parameters.update(results["parameters"])
-        self.forms.extend(results["forms"])
-
-        print(f"[PIPELINE] URLs discovered: {len(self.urls)}")
-        print(f"[PIPELINE] JS files discovered: {len(self.js_files)}")
-
-    # -------------------------------------------------------
-    # STEP 8 — Javascript Endpoint Extraction
-    # -------------------------------------------------------
-
-    async def extract_js_endpoints(self):
-
-        print("[PIPELINE] Running JS endpoint extractor")
-
-        endpoints = await self.js_extractor.extract_endpoints(
-            list(self.js_files)
-        )
-
+    def __init__(self, domain: str, wordlist: str, concurrency: int = 150):
+        self.domain = domain
+        self.wordlist = wordlist
+        self.concurrency = concurrency
+        
+        # Internal State
+        self.subdomains: List[str] = []
+        self.live_hosts: List[Dict] = []
+        self.api_inventory: Set[str] = set()
+        self.critical_findings: List[Dict] = []
+        
+        # Integration Clients
+        self.redis_url = "redis://localhost:6379/0"
+        self.apex = ApexUplink()  # Connects to CyberDudeBivash Sentinel APEX
+        self.start_time = datetime.utcnow()
+
+    async def _publish_intelligence(self, finding: Dict[str, Any]):
+        """
+        Dual-Uplink Strategy:
+        1. Local Redis: For the real-time Dashboard/Alert Engine.
+        2. Sentinel APEX: For the global Threat Intel Platform.
+        """
+        finding["domain"] = self.domain
+        finding["detected_at"] = datetime.utcnow().isoformat()
+        
+        # 1. Local Alert (Redis Pub/Sub)
+        try:
+            client = redis.from_url(self.redis_url)
+            await client.publish("recon_alerts", json.dumps(finding))
+            await client.close()
+        except Exception as e:
+            logger.error(f"[ALERTS-ERR] Redis publish failed: {e}")
+
+        # 2. Sentinel APEX Sync (Enterprise Integration)
+        if finding.get("severity") == "CRITICAL":
+            await self.apex.push_vulnerability(finding)
+
+    async def _phase_1_discovery(self):
+        """Active & Passive Subdomain Intelligence."""
+        logger.info(f"Initiating Discovery Swarm for: {self.domain}")
+        engine = SubdomainIntelligenceEngine(self.domain, self.wordlist, self.concurrency)
+        self.subdomains = await engine.run()
+
+    async def _phase_2_infrastructure(self):
+        """Probing & Technology Fingerprinting."""
+        if not self.subdomains: return
+        self.live_hosts = await probe_hosts(self.subdomains)
+        
+        tasks = [fingerprint_host(x["url"]) for x in self.live_hosts]
+        tech_results = await asyncio.gather(*tasks)
+        
+        for i, entry in enumerate(self.live_hosts):
+            save_asset(domain=self.domain, host=entry["url"], tech=tech_results[i])
+
+    async def _phase_3_logic_extraction(self):
+        """JavaScript Analysis & API Mapping."""
+        if not self.live_hosts: return
+        urls = [x["url"] for x in self.live_hosts]
+        endpoints = await extract_js_endpoints(urls)
+        
         for ep in endpoints:
-            self.endpoints.add(ep)
+            if any(k in ep.lower() for k in ["/api/", "/v1/", "/v2/", "/graphql"]):
+                self.api_inventory.add(ep)
 
-        print(f"[PIPELINE] Total endpoints discovered: {len(self.endpoints)}")
+    async def _phase_4_autonomous_agents(self):
+        """The Money Layer: BOLA & Cloud Hunting."""
+        logger.info(f"Launching Agentic Security Swarm for {self.domain}...")
+        
+        # 1. Agentic BOLA Testing
+        if self.api_inventory:
+            agent = BOLAAgent(concurrency=30)
+            findings = await agent.run_swarm_bola(list(self.api_inventory))
+            for f in findings:
+                f["type"], f["severity"] = "BOLA_VULNERABILITY", "CRITICAL"
+                self.critical_findings.append(f)
+                await self._publish_intelligence(f)
 
-    # -------------------------------------------------------
-    # STEP 9 — Subdomain Takeover Detection
-    # -------------------------------------------------------
+        # 2. Multi-Cloud Hunter
+        hunter = MultiCloudBucketHunter(self.domain)
+        leaks = await hunter.run_hunt()
+        for leak in leaks:
+            leak["type"], leak["severity"] = "CLOUD_STORAGE_LEAK", "CRITICAL"
+            self.critical_findings.append(leak)
+            await self._publish_intelligence(leak)
 
-    async def detect_takeovers(self):
-
-        print("[PIPELINE] Running takeover detector")
-
-        findings = await self.takeover_detector.detect(
-            list(self.subdomains)
-        )
-
-        for finding in findings:
-            await self.db.save_takeover(finding)
-
-        print("[PIPELINE] Takeover detection completed")
-
-    # -------------------------------------------------------
-    # STEP 10 — Persist All Assets
-    # -------------------------------------------------------
-
-    async def persist_assets(self):
-
-        print("[PIPELINE] Persisting discovered assets")
-
-        for sub in self.subdomains:
-            await self.db.save_subdomain(sub)
-
-        for host in self.live_hosts:
-            await self.db.save_host(host)
-
-        for url in self.urls:
-            await self.db.save_url(url)
-
-        for js in self.js_files:
-            await self.db.save_javascript(js)
-
-        for ep in self.endpoints:
-            await self.db.save_endpoint(ep)
-
-        print("[PIPELINE] Asset persistence complete")
-
-    # -------------------------------------------------------
-    # MAIN PIPELINE EXECUTION
-    # -------------------------------------------------------
-
-    async def run(self) -> Dict:
-
-        print("\n===================================")
-        print(" CYBERDUDEBIVASH BUG HUNTER ")
-        print(" ENTERPRISE RECON PIPELINE ")
-        print("===================================\n")
-
-        await self.discover_subdomains()
-
-        await self.enrich_subdomains()
-
-        await self.run_permutation_engine()
-
-        await self.probe_live_hosts()
-
-        await self.scan_ports()
-
-        await self.fingerprint_technologies()
-
-        await self.run_crawler()
-
-        await self.extract_js_endpoints()
-
-        await self.detect_takeovers()
-
-        await self.persist_assets()
-
-        print("\n[PIPELINE] Recon Completed Successfully\n")
-
-        return {
-            "subdomains": list(self.subdomains),
-            "live_hosts": list(self.live_hosts),
-            "urls": list(self.urls),
-            "javascript_files": list(self.js_files),
-            "endpoints": list(self.endpoints),
-            "parameters": list(self.parameters),
-            "forms": self.forms
-        }
-
-
-# -------------------------------------------------------
-# Standalone Runner
-# -------------------------------------------------------
-
-async def run_pipeline(target: str):
-
-    pipeline = ReconPipeline(target)
-
-    results = await pipeline.run()
-
-    print("\n========== RECON SUMMARY ==========")
-    print("Subdomains:", len(results["subdomains"]))
-    print("Live Hosts:", len(results["live_hosts"]))
-    print("URLs:", len(results["urls"]))
-    print("Javascript Files:", len(results["javascript_files"]))
-    print("Endpoints:", len(results["endpoints"]))
-    print("Parameters:", len(results["parameters"]))
-    print("Forms:", len(results["forms"]))
-    print("===================================")
-
-
-if __name__ == "__main__":
-
-    target = "example.com"
-
-    asyncio.run(run_pipeline(target))
+    async def run(self):
+        """Orchestrate end-to-end production pipeline."""
+        try:
+            await self._phase_1_discovery()
+            await self._phase_2_infrastructure()
+            await self._phase_3_logic_extraction()
+            await self._phase_4_autonomous_agents()
+            
+            # Persist scan results
+            save_scan(self.domain, len(self.critical_findings))
+            
+            duration = (datetime.utcnow() - self.start_time).total_seconds()
+            logger.info(f"Pipeline finished: {self.domain} in {duration:.2f}s.")
+            return {"status": "SUCCESS", "critical_count": len(self.critical_findings)}
+        except Exception as e:
+            logger.error(f"Pipeline Failure for {self.domain}: {str(e)}")
+            return {"status": "FAILED", "error": str(e)}
