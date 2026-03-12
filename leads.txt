@@ -1,0 +1,4 @@
+google.com
+paypal.com
+Netflix.com
+amazon.com
